@@ -1,4 +1,4 @@
-# Downloads monthly report of how many ASCEND enrollments there are in each cohort.
+#  Downloads monthly report of how many ASCEND enrollments there are in each cohort.
 # Requires moodle_downloader.py to be in the same directory and .env file with MOODLE_USERNAME and MOODLE_PASSWORD set.
 # 
 
@@ -21,8 +21,13 @@ english_enrollments = pd.merge(
     right_on='Email',
     how='inner')
 english_enrollments = english_enrollments[~english_enrollments['Email address'].str.contains('iecbc.ca')] # filter out test accounts
-en_enrollment_count = english_enrollments.groupby('Cohort Name').size()
+english_enrollments['Submitted On'] = pd.to_datetime(english_enrollments['Submitted On'], format='%d-%m-%Y %H:%M:%S')
 
+# Group by cohort and month, then pivot to get a table of counts
+en_enrollment_count = english_enrollments.groupby(['Cohort Name', pd.Grouper(key='Submitted On', freq='ME')]).size().reset_index(name='Count')
+en_enrollment_count.rename(columns={'Submitted On': 'Month'}, inplace=True)
+
+en_enrollment_count = en_enrollment_count.pivot(index='Cohort Name', columns='Month', values='Count')
 
 french_enrollments = pd.merge(
     cohorts,
@@ -31,15 +36,33 @@ french_enrollments = pd.merge(
     right_on='Veuillez confirmer votre adresse courriel',
     how='inner')
 french_enrollments = french_enrollments[~french_enrollments['Email address'].str.contains('iecbc.ca')] # filter out test accounts
-fr_enrollment_count = french_enrollments.groupby('Cohort Name').size()
+french_enrollments['Submitted On'] = pd.to_datetime(french_enrollments['Submitted On'], format='%d-%m-%Y %H:%M:%S')
+
+# Group by cohort and month, then pivot to get a table of counts
+fr_enrollment_count = french_enrollments.groupby(['Cohort Name', pd.Grouper(key='Submitted On', freq='ME')]).size().reset_index(name='Count')
+fr_enrollment_count.rename(columns={'Submitted On': 'Month'}, inplace=True)
+fr_enrollment_count = fr_enrollment_count.pivot(index='Cohort Name', columns='Month', values='Count')
 
 # Combine english and french enrollment counts into a single dataframe
-enrollments = pd.concat([en_enrollment_count, fr_enrollment_count], axis=1, keys=['English', 'French'])
+# Columns are nested Month > Language, so English/French sit side by side within each month
+enrollments = (
+    pd.concat(
+        [en_enrollment_count, fr_enrollment_count],
+        axis=1,
+        keys=['English', 'French']
+    )
+    .swaplevel(0, 1, axis=1)
+    .sort_index(axis=1, level=0)
+)
+enrollments = enrollments.fillna(0).astype(int)
 
-# cast english and french columns as integers and fill NaN with 0
-enrollments['English'] = enrollments['English'].fillna(0).astype(int)
-enrollments['French'] = enrollments['French'].fillna(0).astype(int)
+# Rename columns to use Month Year instead of timestamp
+enrollments.columns = pd.MultiIndex.from_tuples(
+    [(ts.strftime('%B %Y'), lang) for ts, lang in enrollments.columns],
+    names=enrollments.columns.names
+)
+
 
 # Save enrollment counts to csv
 last_month = (dt.datetime.now() - pd.DateOffset(months=1)).strftime('%B %Y')
-enrollments.to_csv(f'data/cohort_enrollments_{last_month}.csv')
+enrollments.to_excel(f'reports/cohort_enrollments_{last_month}.xlsx')
