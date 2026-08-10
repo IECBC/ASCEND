@@ -65,4 +65,4 @@ enrollments.columns = pd.MultiIndex.from_tuples(
 
 # Save enrollment counts to csv
 last_month = (dt.datetime.now() - pd.DateOffset(months=1)).strftime('%B %Y')
-enrollments.to_excel(f'reports/cohort_enrollments_{last_month}.xlsx')
+enrollments.to_excel(f'reports/ASCEND_cohort_enrollments_{last_month}.xlsx')
